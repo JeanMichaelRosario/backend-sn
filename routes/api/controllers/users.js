@@ -1,10 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const { check, validationResult } = require('express-validator/check');
-const User = require('../models/users');
-const jwt = require('jsonwebtoken');
-const gravatar = require('gravatar');
-const bcrypt = require('bcryptjs');
+const User = require('../../../core/api/users');
+const SocialNetworkError = require('../../../core/errors/SocialNetworkError');
 
 /**
  * @route           POST api/users
@@ -24,56 +22,24 @@ router.post('/',
             .isLength(6)
     ],
     async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-    }
-
-    const { name, password, email } = req.body;
-
     try {
-        let user = await User.findOne({ email });
-        if (user) {
-            return res.status(400).json({ errors: [{ msg: 'User already exists' }]});
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            throw new SocialNetworkError(409, errors.errors);
         }
-        const avatar = gravatar.url(email, {
-            s: '200',
-            r: 'pg',
-            d: 'mm'
-        });
-
-        user = new User({
-            name,
-            email,
-            avatar
-        });
-        const salt = await bcrypt.genSalt(20);
-        user.password = await bcrypt.hash(password, salt);
-
-        await user.save();
-        const payload = {
-            user: {
-                id: user.id
-            }
-        }
-
-        jwt.sign(
-            payload,
-            process.env.SECRET,
-            { expiresIn: process.env.EXPIRESIN },
-            (err, token) => {
-                if(err) {
-                    console.error(err);
-                    throw err;
-                }
-                res.json({token});
-            }
-        )
-    } catch (error) {
-        console.error(error.message);
-        res.status(500).send("Server error");
+        const response = await User.register(req.body);
+        console.log("Response: ", response);
+        res.status(200)
+            .send(response);
     }
-    
+    catch (error) {
+        console.error(error.message);
+        if (error instanceof SocialNetworkError) {
+            return res.status(error.number).json({ errors: [{ msg: error.message }]});
+        } else {
+            return res.status(500).send("Server error");
+        }
+    }
 });
 
 
